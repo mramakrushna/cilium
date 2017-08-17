@@ -87,7 +87,7 @@ function import_sample_policy {
 [{
      "endpointSelector": {"matchLabels":{"k8s:id":"app3"}},
      "egress": [{
-         "toCIDR": [ { "ip": "9.9.9.9/32" } ]
+         "toCIDR": [ "9.9.9.9/32" ]
      }]
  }]
 EOF
@@ -229,3 +229,4 @@ echo "---- Test 17: never --> default mode: check that each endpoint has policy 
 cilium config PolicyEnforcement=default
 wait_for_endpoints ${NUM_ENDPOINTS}
 check_endpoints_policy_disabled ${NUM_ENDPOINTS}
+
