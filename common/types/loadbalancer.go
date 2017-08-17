@@ -22,6 +22,7 @@ import (
 	"sync"
 
 	"github.com/cilium/cilium/api/v1/models"
+	log "github.com/Sirupsen/logrus"
 )
 
 const (
@@ -110,7 +111,9 @@ func (lb *LoadBalancer) AddService(svc LBSVC) bool {
 }
 
 func (lb *LoadBalancer) DeleteService(svc *LBSVC) {
+	log.Debugf("DeleteService: deleting key with Sha256 %s from lb.SVCMap", svc.Sha256 )
 	delete(lb.SVCMap, svc.Sha256)
+	log.Debugf("DeleteService: deleting svc.FE.ID = %s from lb.SVCMapID", svc.FE.ID)
 	delete(lb.SVCMapID, svc.FE.ID)
 }
 

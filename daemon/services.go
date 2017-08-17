@@ -28,6 +28,7 @@ import (
 
 func updateL3n4AddrIDRef(id types.ServiceID, l3n4AddrID types.L3n4AddrID) error {
 	key := path.Join(common.ServiceIDKeyPath, strconv.FormatUint(uint64(id), 10))
+	log.Debugf("updating key: %s to map to %v in kvstore", key, l3n4AddrID)
 	return kvstore.Client.SetValue(key, l3n4AddrID)
 }
 
@@ -86,11 +87,13 @@ func PutL3n4Addr(l3n4Addr types.L3n4Addr, baseID uint32) (*types.L3n4AddrID, err
 }
 
 func getL3n4AddrID(keyPath string) (*types.L3n4AddrID, error) {
+	log.Debugf("getL3n4AddrID with key %s", keyPath)
 	rmsg, err := kvstore.Client.GetValue(keyPath)
 	if err != nil {
 		return nil, err
 	}
 	if rmsg == nil {
+		log.Debugf("getL3n4AddrID: no value mapped to key %s", keyPath)
 		return nil, nil
 	}
 
@@ -104,6 +107,7 @@ func getL3n4AddrID(keyPath string) (*types.L3n4AddrID, error) {
 // GetL3n4AddrID returns the L3n4AddrID that belongs to the given id.
 func GetL3n4AddrID(id uint32) (*types.L3n4AddrID, error) {
 	strID := strconv.FormatUint(uint64(id), 10)
+	log.Debugf("GetL3n4AddrID: for ID %s", strID)
 	return getL3n4AddrID(path.Join(common.ServiceIDKeyPath, strID))
 }
 
@@ -114,6 +118,7 @@ func GetL3n4AddrIDBySHA256(sha256sum string) (*types.L3n4AddrID, error) {
 
 // DeleteL3n4AddrIDByUUID deletes the L3n4AddrID belonging to the given id.
 func DeleteL3n4AddrIDByUUID(id uint32) error {
+	log.Debugf("DeleteL3n4AddrIDByUUID: deleting ID %s", id)
 	l3n4AddrID, err := GetL3n4AddrID(id)
 	if err != nil {
 		return err
@@ -128,6 +133,7 @@ func DeleteL3n4AddrIDByUUID(id uint32) error {
 // DeleteL3n4AddrIDBySHA256 deletes the L3n4AddrID that belong to the serviceL4ID'
 // sha256Sum.
 func DeleteL3n4AddrIDBySHA256(sha256Sum string) error {
+	log.Debugf("deleting L3n4AddrID with SHA256 %s", sha256Sum)
 	if sha256Sum == "" {
 		return nil
 	}
