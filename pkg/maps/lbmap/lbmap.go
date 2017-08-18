@@ -21,6 +21,7 @@ import (
 
 	"github.com/cilium/cilium/common/types"
 	"github.com/cilium/cilium/pkg/bpf"
+	log "github.com/Sirupsen/logrus"
 )
 
 const (
@@ -126,8 +127,10 @@ func UpdateService(key ServiceKey, value ServiceValue) error {
 }
 
 func DeleteService(key ServiceKey) error {
+	log.Debugf("lbmap.DeleteService: deleting key %s", key.String())
 	err := key.Map().Delete(key.ToNetwork())
 	if err != nil {
+		log.Debugf("lbmap.DeleteService: Deleting key from map failed: %s", err)
 		return err
 	}
 	return LookupAndDeleteServiceWeights(key)
@@ -161,9 +164,12 @@ func UpdateServiceWeights(key ServiceKey, value *RRSeqValue) error {
 
 // LookupAndDeleteServiceWeights deletes entry from cilium_lb6_rr_seq or cilium_lb4_rr_seq
 func LookupAndDeleteServiceWeights(key ServiceKey) error {
+	log.Debugf("LookupAndDeleteServiceWeights: deleting key %s", key.String())
+	log.Debugf("LookupAndDeleteServiceWeights: deleting key %s (ToNetwork)", key.ToNetwork().String())
 	_, err := key.RRMap().Lookup(key.ToNetwork())
 	if err != nil {
 		// Ignore if entry is not found.
+		log.Debugf("LookupAndDeleteServiceWeights: key not found")
 		return nil
 	}
 
@@ -211,6 +217,7 @@ func UpdateRevNat(key RevNatKey, value RevNatValue) error {
 }
 
 func DeleteRevNat(key RevNatKey) error {
+	log.Debugf("deleting RevNatKey: %s", key.String())
 	return key.Map().Delete(key.ToNetwork())
 }
 
@@ -309,12 +316,14 @@ func UpdateWrrSeq(fe ServiceKey, weights []uint16) error {
 
 // AddSVC2BPFMap adds the given bpf service to the bpf maps.
 func AddSVC2BPFMap(fe ServiceKey, besValues []ServiceValue, addRevNAT bool, revNATID int) error {
+	log.Debugf("lbmap.AddSVC2BPFMap: adding frontend %s to BPF map", fe)
 	var err error
 	var weights []uint16
 	// Put all the backend services first
 	nSvcs := 1
 	nNonZeroWeights := 0
 	for _, be := range besValues {
+		log.Debugf("lbmap.AddSVC2BPFMap: mapping frontend %s --> backend %s", fe, be)
 		fe.SetBackend(nSvcs)
 		weights = append(weights, be.GetWeight())
 		if be.GetWeight() != 0 {
@@ -362,6 +371,7 @@ func AddSVC2BPFMap(fe ServiceKey, besValues []ServiceValue, addRevNAT bool, revN
 // L3n4Addr2ServiceKey converts the given l3n4Addr to a ServiceKey with the slave ID
 // set to 0.
 func L3n4Addr2ServiceKey(l3n4Addr types.L3n4Addr) ServiceKey {
+	log.Debugf("converting L3n4Addr %s to ServiceKey", l3n4Addr)
 	if l3n4Addr.IsIPv6() {
 		return NewService6Key(l3n4Addr.IP, l3n4Addr.Port, 0)
 	}
@@ -370,7 +380,7 @@ func L3n4Addr2ServiceKey(l3n4Addr types.L3n4Addr) ServiceKey {
 
 // LBSVC2ServiceKeynValue transforms the SVC cilium type into a bpf SVC type.
 func LBSVC2ServiceKeynValue(svc types.LBSVC) (ServiceKey, []ServiceValue, error) {
-
+	log.Debugf("LBSVC2ServiceKeynValue: turning cilium service: %s, %s into BPF service", svc.Sha256, svc.FE)
 	fe := L3n4Addr2ServiceKey(svc.FE.L3n4Addr)
 
 	// Create a list of ServiceValues so we know everything is safe to put in the lb
@@ -386,6 +396,7 @@ func LBSVC2ServiceKeynValue(svc types.LBSVC) (ServiceKey, []ServiceValue, error)
 		beValue.SetWeight(be.Weight)
 
 		besValues = append(besValues, beValue)
+		log.Debugf("LBSVC2ServiceKeynValue: associating frontend key %s --> backend service %s", fe, beValue)
 	}
 
 	return fe, besValues, nil
@@ -401,6 +412,7 @@ func L3n4Addr2RevNatKeynValue(svcID types.ServiceID, feL3n4Addr types.L3n4Addr) 
 
 // ServiceKey2L3n4Addr converts the given svcKey to a L3n4Addr.
 func ServiceKey2L3n4Addr(svcKey ServiceKey) (*types.L3n4Addr, error) {
+	log.Debugf("creating L3n4Addr for ServiceKey %s", svcKey.String())
 	var (
 		feIP   net.IP
 		fePort uint16
@@ -414,7 +426,6 @@ func ServiceKey2L3n4Addr(svcKey ServiceKey) (*types.L3n4Addr, error) {
 		feIP = svc4Key.Address.IP()
 		fePort = svc4Key.Port
 	}
-
 	return types.NewL3n4Addr(types.TCP, feIP, fePort)
 }
 
@@ -427,18 +438,25 @@ func ServiceKeynValue2FEnBE(svcKey ServiceKey, svcValue ServiceValue) (*types.L3
 		bePort   uint16
 		beWeight uint16
 	)
+
+	log.Debugf("ServiceKeynValue2FEnBE: converting %s --> %s to frontend and backend", svcKey.String(), svcValue.String())
+
 	if svcKey.IsIPv6() {
+		log.Debugf("ServiceKeynValue2FEnBE: key %s IsIPV6", svcKey.String())
 		svc6Val := svcValue.(*Service6Value)
 		svcID = types.ServiceID(svc6Val.RevNat)
 		beIP = svc6Val.Address.IP()
 		bePort = svc6Val.Port
 		beWeight = svc6Val.Weight
+		log.Debugf("ServiceKeynValue2FEnBE: key %s beIP: %v, bePort: %v", svcKey.String(), beIP, bePort)
 	} else {
+		log.Debugf("ServiceKeynValue2FEnBE: key %s IsIPV4", svcKey.String())
 		svc4Val := svcValue.(*Service4Value)
 		svcID = types.ServiceID(svc4Val.RevNat)
 		beIP = svc4Val.Address.IP()
 		bePort = svc4Val.Port
 		beWeight = svc4Val.Weight
+		log.Debugf("ServiceKeynValue2FEnBE: key %s beIP: %v, bePort: %v", svcKey.String(), beIP, bePort)
 	}
 
 	feL3n4Addr, err := ServiceKey2L3n4Addr(svcKey)

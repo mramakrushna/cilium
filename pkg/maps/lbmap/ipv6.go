@@ -24,6 +24,7 @@ import (
 	"github.com/cilium/cilium/common/types"
 	"github.com/cilium/cilium/pkg/bpf"
 	"github.com/cilium/cilium/pkg/byteorder"
+	log "github.com/Sirupsen/logrus"
 )
 
 var (
@@ -58,6 +59,8 @@ func NewService6Key(ip net.IP, port uint16, slave uint16) *Service6Key {
 	}
 
 	copy(key.Address[:], ip.To16())
+
+	log.Debugf("creating NewService6Key: %s", key)
 
 	return &key
 }

@@ -118,9 +118,10 @@ func GetL3n4AddrIDBySHA256(sha256sum string) (*types.L3n4AddrID, error) {
 
 // DeleteL3n4AddrIDByUUID deletes the L3n4AddrID belonging to the given id.
 func DeleteL3n4AddrIDByUUID(id uint32) error {
-	log.Debugf("DeleteL3n4AddrIDByUUID: deleting ID %s", id)
+	log.Debugf("DeleteL3n4AddrIDByUUID: deleting ID %d", id)
 	l3n4AddrID, err := GetL3n4AddrID(id)
 	if err != nil {
+		log.Debugf("DeleteL3n4AddrIDByUUID: GetL3n4AddrID returned error: %v", err)
 		return err
 	}
 	if l3n4AddrID == nil {
@@ -165,7 +166,8 @@ func DeleteL3n4AddrIDBySHA256(sha256Sum string) error {
 	if err := updateL3n4AddrIDRef(oldL3n4ID, l3n4AddrID); err != nil {
 		return err
 	}
-
+	log.Debugf("deleting L3n4AddrID with SHA256 %s update occurred successfully (no error)", sha256Sum)
+	log.Debugf("DeleteL3n4AddrIDBySHA256: setting value in kvstore now for sha256 %s", sha256Sum)
 	return kvstore.Client.SetValue(svcPath, l3n4AddrID)
 }
 

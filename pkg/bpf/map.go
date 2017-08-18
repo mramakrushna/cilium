@@ -386,6 +386,7 @@ func (m *Map) Dump(parser DumpParser, cb DumpCallback) error {
 		}
 
 		k, v, err := parser(nextKey, value)
+		log.Debugf("Dump from map %s: key --> value: %s --> %s", m.name, k, v)
 		if err != nil {
 			return err
 		}

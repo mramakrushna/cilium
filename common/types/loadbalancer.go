@@ -111,9 +111,19 @@ func (lb *LoadBalancer) AddService(svc LBSVC) bool {
 }
 
 func (lb *LoadBalancer) DeleteService(svc *LBSVC) {
-	log.Debugf("DeleteService: deleting key with Sha256 %s from lb.SVCMap", svc.Sha256 )
+	log.Debugf("loadbalancer.DeleteService: deleting key with Sha256 %s from lb.SVCMap", svc.Sha256 )
+	if val, ok := lb.SVCMap[svc.Sha256]; ok {
+		log.Debugf("loadbalancer.DeleteService: %s maps to %v in lb.SVCMap", svc.Sha256, val)
+	} else {
+		log.Debugf("loadbalancer.DeleteService: tried to delete key %s from lb.SVCMap, but it wasn't there", svc.Sha256)
+	}
 	delete(lb.SVCMap, svc.Sha256)
-	log.Debugf("DeleteService: deleting svc.FE.ID = %s from lb.SVCMapID", svc.FE.ID)
+	log.Debugf("loadbalancer.DeleteService: deleting svc.FE.ID = %v from lb.SVCMapID", svc.FE.ID)
+	if val, ok := lb.SVCMapID[svc.FE.ID]; ok {
+		log.Debugf("loadbalancer.DeleteService: %v maps to %v in lb.SVCMapID", svc.FE.ID,  val)
+	} else {
+		log.Debugf("loadbalancer.DeleteService: tried to delete key %v from lb.SVCMapID, but it wasn't there", svc.FE.ID)
+	}
 	delete(lb.SVCMapID, svc.FE.ID)
 }
 
@@ -224,6 +234,7 @@ type L3n4Addr struct {
 
 // NewL3n4Addr creates a new L3n4Addr.
 func NewL3n4Addr(protocol L4Type, ip net.IP, portNumber uint16) (*L3n4Addr, error) {
+	log.Debugf("creating NewL3n4Addr with protocol: %s, IP: %v, port: %d", protocol, ip, portNumber)
 	lbport, err := NewL4Addr(protocol, portNumber)
 	if err != nil {
 		return nil, err
@@ -259,6 +270,7 @@ func NewL3n4AddrFromModel(base *models.FrontendAddress) (*L3n4Addr, error) {
 }
 
 func NewLBBackEnd(protocol L4Type, ip net.IP, portNumber uint16, weight uint16) (*LBBackEnd, error) {
+	log.Debugf("creating new LBBackend with protocol: %s, IP: %v, port:%d, weight: %d", protocol, ip, portNumber, weight)
 	lbport, err := NewL4Addr(protocol, portNumber)
 	if err != nil {
 		return nil, err
@@ -378,6 +390,10 @@ type L3n4AddrID struct {
 	ID ServiceID
 }
 
+func (a *L3n4AddrID) String() string {
+	return fmt.Sprintf("%d: %s ", a.ID, a.L3n4Addr.String())
+}
+
 // NewL3n4AddrID creates a new L3n4AddrID.
 func NewL3n4AddrID(protocol L4Type, ip net.IP, portNumber uint16, id ServiceID) (*L3n4AddrID, error) {
 	l3n4Addr, err := NewL3n4Addr(protocol, ip, portNumber)
@@ -408,6 +424,7 @@ func (l *L3n4AddrID) IsIPv6() bool {
 // remaining be elements will be kept on the same index and, in case the new array is
 // larger than the number of backends, some elements will be empty.
 func (svcs SVCMap) AddFEnBE(fe *L3n4AddrID, be *LBBackEnd, beIndex int) {
+	log.Debugf("adding front-end %s and back-end %s with backend index %d", fe.String(), be.String(), beIndex)
 	sha := fe.SHA256Sum()
 
 	var lbsvc LBSVC

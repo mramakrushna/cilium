@@ -32,6 +32,7 @@ import (
 // RevNAT value (feCilium.L3n4Addr) to the lb's RevNAT map for the given feCilium.ID.
 func (d *Daemon) addSVC2BPFMap(feCilium types.L3n4AddrID, feBPF lbmap.ServiceKey,
 	besBPF []lbmap.ServiceValue, addRevNAT bool) error {
+	log.Debugf("addSVC2BPFMap: adding service %s to LBMap", feBPF)
 
 	err := lbmap.AddSVC2BPFMap(feBPF, besBPF, addRevNAT, int(feCilium.ID))
 	if err != nil {
@@ -187,9 +188,14 @@ func (h *deleteServiceID) Handle(params DeleteServiceIDParams) middleware.Respon
 	}
 
 	// FIXME: How to handle error?
-	DeleteL3n4AddrIDByUUID(uint32(params.ID))
+	err := DeleteL3n4AddrIDByUUID(uint32(params.ID))
+
+	if err != nil {
+		log.Warningf("error, DeleteL3n4AddrIDByUUID failed: %s", err)
+	}
 
 	if err := h.d.svcDelete(svc); err != nil {
+		log.Warningf("Handle DELETE /service: error deleting svc %v:%s", svc, err)
 		return apierror.Error(DeleteServiceIDFailureCode, err)
 	}
 
@@ -219,6 +225,7 @@ func (d *Daemon) svcDelete(svc *types.LBSVC) error {
 	svcKey.SetBackend(0)
 
 	if err := lbmap.DeleteService(svcKey); err != nil {
+		log.Debugf("svcDelete: lbMap.DeleteService failed for %s", svcKey.String())
 		return err
 	}
 
@@ -389,6 +396,7 @@ func (d *Daemon) RevNATDump() ([]types.L3n4AddrID, error) {
 // KVStore's ID, that entry will be updated on the bpf map accordingly with the new ID
 // retrieved from the KVStore.
 func (d *Daemon) SyncLBMap() error {
+	log.Debugf("SyncLBMap: syncing BPF LBMap with daemon's LB map")
 	d.loadBalancer.BPFMapMU.Lock()
 	defer d.loadBalancer.BPFMapMU.Unlock()
 
@@ -405,9 +413,12 @@ func (d *Daemon) SyncLBMap() error {
 			return
 		}
 		svcValue := value.(lbmap.ServiceValue)
+		log.Debugf("SyncLBMap: parseSVCEntries: %s --> %s", svcKey.String(), svcValue.String())
 		fe, be, err := lbmap.ServiceKeynValue2FEnBE(svcKey, svcValue)
+		log.Debugf("SyncLBMap: parseSVCEntries created frontend: %s from svckey / value: %s --> %s ", fe.String(), svcKey.String(), svcValue.String())
+		log.Debugf("SyncLBMap: parseSVCEntires created backend: %s from svckey / value: %s --> %s ", be.String(), svcKey.String, svcValue.String())
 		if err != nil {
-			log.Errorf("%s", err)
+			log.Errorf("SyncLBMap: %s", err)
 			return
 		}
 
@@ -417,6 +428,7 @@ func (d *Daemon) SyncLBMap() error {
 	parseRevNATEntries := func(key bpf.MapKey, value bpf.MapValue) {
 		revNatK := key.(lbmap.RevNatKey)
 		revNatV := value.(lbmap.RevNatValue)
+		log.Debugf("parseRevNatEntries: %s --> %s", revNatK.String(), revNatV.String())
 		fe, err := lbmap.RevNatValue2L3n4AddrID(revNatK, revNatV)
 		if err != nil {
 			log.Errorf("%s", err)
@@ -426,10 +438,12 @@ func (d *Daemon) SyncLBMap() error {
 	}
 
 	addSVC2BPFMap := func(oldID types.ServiceID, svc types.LBSVC) error {
-		// check if the reverser nat is present on the bpf map and update the
-		// reverse nat key and delete the old one.
+		log.Debugf("addSVC2BPFMap: adding service ID %d / load balancer service %s", oldID, svc.Sha256)
+		// check if the ID for revNat is present in the bpf map, update the
+		// reverse nat key, delete the old one.
 		revNAT, ok := newRevNATMap[oldID]
 		if ok {
+			log.Debugf("addSVC2BPFMap: %d is present in BPF map, updating revnat key", oldID)
 			revNATK, revNATV := lbmap.L3n4Addr2RevNatKeynValue(svc.FE.ID, revNAT)
 			err := lbmap.UpdateRevNat(revNATK, revNATV)
 			if err != nil {
@@ -443,7 +457,9 @@ func (d *Daemon) SyncLBMap() error {
 				log.Warningf("Unable to remove old rev NAT entry with ID %d: %s", oldID, err)
 			}
 
+			log.Debugf("addSVC2BPFMap: deleting oldID %d from newRevNATMap", oldID )
 			delete(newRevNATMap, oldID)
+			log.Debugf("addSVC2BPFMap: adding svc.FE.ID: %d --> revNAT: %s to newRevNATMap", svc.FE.ID, revNAT.String())
 			newRevNATMap[svc.FE.ID] = revNAT
 		}
 
@@ -464,14 +480,26 @@ func (d *Daemon) SyncLBMap() error {
 	if !d.conf.IPv4Disabled {
 		// lbmap.RRSeq4Map is updated as part of Service4Map and does
 		// not need separate dump.
-		lbmap.Service4Map.Dump(lbmap.Service4DumpParser, parseSVCEntries)
-		lbmap.RevNat4Map.Dump(lbmap.RevNat4DumpParser, parseRevNATEntries)
+		err := lbmap.Service4Map.Dump(lbmap.Service4DumpParser, parseSVCEntries)
+		if err != nil {
+			log.Warningf("error dumping Service4Map: %s", err)
+		}
+		err = lbmap.RevNat4Map.Dump(lbmap.RevNat4DumpParser, parseRevNATEntries)
+		if err != nil {
+			log.Warningf("error dumping RevNat4Map: %s", err)
+		}
 	}
 
 	// lbmap.RRSeq6Map is updated as part of Service6Map and does not need
 	// separate dump.
-	lbmap.Service6Map.Dump(lbmap.Service6DumpParser, parseSVCEntries)
+	err := lbmap.Service6Map.Dump(lbmap.Service6DumpParser, parseSVCEntries)
+	if err != nil {
+		log.Warningf("error dumping Service6Map: %s", err)
+	}
 	lbmap.RevNat6Map.Dump(lbmap.RevNat6DumpParser, parseRevNATEntries)
+	if err != nil {
+		log.Warningf("error dumping RevNat6Map: %s", err)
+	}
 
 	// Let's check if the services read from the lbmap have the same ID set in the
 	// KVStore.
@@ -486,7 +514,7 @@ func (d *Daemon) SyncLBMap() error {
 		}
 
 		if svc.FE.ID != kvL3n4AddrID.ID {
-			log.Infof("Service ID was out of sync, got new ID %d -> %d", svc.FE.ID, kvL3n4AddrID.ID)
+			log.Infof("Service ID %d was out of sync, got new ID %d", svc.FE.ID, kvL3n4AddrID.ID)
 			oldID := svc.FE.ID
 			svc.FE.ID = kvL3n4AddrID.ID
 			if err := addSVC2BPFMap(oldID, svc); err != nil {

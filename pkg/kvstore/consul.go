@@ -156,6 +156,7 @@ func (c *ConsulClient) InitializeFreeID(path string, firstID uint32) error {
 
 func (c *ConsulClient) SetValue(k string, v interface{}) error {
 	var err error
+	log.Debugf("ConsulClient.SetValue: updating key %s", k)
 	lblKey := &consulAPI.KVPair{Key: k}
 	lblKey.Value, err = json.Marshal(v)
 	if err != nil {
