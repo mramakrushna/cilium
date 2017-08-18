@@ -1097,16 +1097,18 @@ func (h *patchConfig) Handle(params PatchConfigParams) middleware.Responder {
 
 	var policyEnforcementChanged bool
 
-	// Update policy enforcement configuration if needed.
-	config.EnablePolicyMU.RLock()
-	oldEnforcementValue := config.EnablePolicy
-	config.EnablePolicyMU.RUnlock()
 	enforcement := params.Configuration.PolicyEnforcement
 
 	// Only update if value provided for PolicyEnforcement.
 	if enforcement != "" {
 		switch enforcement {
 		case endpoint.NeverEnforce, endpoint.DefaultEnforcement, endpoint.AlwaysEnforce:
+
+			// Update policy enforcement configuration if needed.
+			config.EnablePolicyMU.RLock()
+			oldEnforcementValue := config.EnablePolicy
+			config.EnablePolicyMU.RUnlock()
+
 			// If the policy enforcement configuration has indeed changed, we have
 			// to regenerate endpoints and update daemon's configuration.
 			if enforcement != oldEnforcementValue {
