@@ -24,6 +24,7 @@ import (
 	"github.com/cilium/cilium/pkg/endpoint"
 
 	"github.com/spf13/cobra"
+	"github.com/go-openapi/swag"
 )
 
 var noHeaders bool
@@ -44,7 +45,7 @@ func init() {
 
 func listEndpoint(w *tabwriter.Writer, ep *models.Endpoint, id string, label string) {
 	var isPolicyEnabled string
-	if *ep.PolicyEnabled {
+	if swag.BoolValue(ep.PolicyEnabled) {
 		isPolicyEnabled = "Enabled"
 	} else {
 		isPolicyEnabled = "Disabled"
