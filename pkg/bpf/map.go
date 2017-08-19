@@ -455,6 +455,8 @@ func (m *Map) Update(key MapKey, value MapValue) error {
 		return err
 	}
 
+	log.Debugf("bpf.Update: updating map %s: %s --> %s", m.name, key, value)
+
 	return UpdateElement(m.fd, key.GetKeyPtr(), value.GetValuePtr(), 0)
 }
 
@@ -465,6 +467,8 @@ func (m *Map) Delete(key MapKey) error {
 	if err := m.Open(); err != nil {
 		return err
 	}
+
+	log.Debugf("bpf.Delete: deleting from map %s: %s", m.name, key)
 
 	return DeleteElement(m.fd, key.GetKeyPtr())
 }

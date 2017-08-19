@@ -126,13 +126,65 @@ func UpdateService(key ServiceKey, value ServiceValue) error {
 	return key.Map().Update(key.ToNetwork(), value.ToNetwork())
 }
 
+var serviceList = map[string][]string{}
+
+func dumpService(key bpf.MapKey, value bpf.MapValue) {
+	svcKey := key.(ServiceKey)
+	svcValue := value.(ServiceValue)
+	if svcKey.GetBackend() != 0 {
+		serviceList[svcKey.String()] = append(serviceList[svcKey.String()], svcValue.String())
+	}
+}
+
+//
+func GetBackendCount(key ServiceKey) (int, error) {
+	val, err := key.Map().Lookup(key.ToNetwork())
+	if err != nil {
+		return -1, fmt.Errorf("key %s is not in lbmap", key.ToNetwork())
+	}
+
+	var numBackends int
+
+	switch val.(type) {
+	case ServiceValue:
+		vval := val.(ServiceValue)
+		numBackends = vval.GetCount()
+	default:
+		return -1, fmt.Errorf("ServiceKey %s did not map to ServiceValue", key.ToNetwork())
+	}
+
+	return numBackends, nil
+}
+
+// DeleteService deletes a service from the lbmap. key should be the master (i.e., with backend set to zero).
 func DeleteService(key ServiceKey) error {
-	log.Debugf("lbmap.DeleteService: deleting key %s", key.String())
+	log.Debugf("lbmap.DeleteService: deleting key %s from map %s", key.String(), key.Map().MapInfo)
+	log.Debugf("lbmap.DeleteService: deleting key %s (ToNetwork) from map %s", key.ToNetwork().String(), key.Map().MapInfo)
+
 	err := key.Map().Delete(key.ToNetwork())
 	if err != nil {
 		log.Debugf("lbmap.DeleteService: Deleting key from map failed: %s", err)
 		return err
 	}
+
+
+	_, err = key.Map().Lookup(key.ToNetwork())
+	if err != nil {
+		log.Warningf("lbmap.DeleteService: key %s is not in map and we've deleted it; OK", key.ToNetwork())
+	} else {
+		log.Warningf("lbmap.DeleteService: key %s is in map and we've deleted it and didn't get an error!!!!!!!!!!!! MAGIC", key.ToNetwork())
+	}
+
+	/*switch key.(type) {
+	case Service4Key:
+		serviceList = map[string][]string{}
+		key.Map().Dump(Service4DumpParser, dumpService)
+		log.Debugf("lbmap.DeleteService: post-delete dump: %v", serviceList)
+	default:
+		log.Debugf("not dumping map output for non Service4Key maps")
+	}
+	log.Debugf("\n\n\n\n\n\n")*/
+
 	return LookupAndDeleteServiceWeights(key)
 }
 
@@ -169,7 +221,7 @@ func LookupAndDeleteServiceWeights(key ServiceKey) error {
 	_, err := key.RRMap().Lookup(key.ToNetwork())
 	if err != nil {
 		// Ignore if entry is not found.
-		log.Debugf("LookupAndDeleteServiceWeights: key not found")
+		log.Debugf("LookupAndDeleteServiceWeights: key not found in RR map, ignoring")
 		return nil
 	}
 
@@ -315,7 +367,7 @@ func UpdateWrrSeq(fe ServiceKey, weights []uint16) error {
 }
 
 // AddSVC2BPFMap adds the given bpf service to the bpf maps.
-func AddSVC2BPFMap(fe ServiceKey, besValues []ServiceValue, addRevNAT bool, revNATID int) error {
+func AddSVC2BPFMap(fe ServiceKey, besValues []ServiceValue, addRevNAT bool, revNATID int) (int, error) {
 	log.Debugf("lbmap.AddSVC2BPFMap: adding frontend %s to BPF map", fe)
 	var err error
 	var weights []uint16
@@ -324,13 +376,15 @@ func AddSVC2BPFMap(fe ServiceKey, besValues []ServiceValue, addRevNAT bool, revN
 	nNonZeroWeights := 0
 	for _, be := range besValues {
 		log.Debugf("lbmap.AddSVC2BPFMap: mapping frontend %s --> backend %s", fe, be)
+
+		// BACKENDSET
 		fe.SetBackend(nSvcs)
 		weights = append(weights, be.GetWeight())
 		if be.GetWeight() != 0 {
 			nNonZeroWeights++
 		}
 		if err := UpdateService(fe, be); err != nil {
-			return fmt.Errorf("unable to update service %+v with the value %+v: %s", fe, be, err)
+			return nSvcs, fmt.Errorf("unable to update service %+v with the value %+v: %s", fe, be, err)
 		}
 		nSvcs++
 	}
@@ -341,7 +395,7 @@ func AddSVC2BPFMap(fe ServiceKey, besValues []ServiceValue, addRevNAT bool, revN
 		revNATKey := zeroValue.RevNatKey()
 		revNATValue := fe.RevNatValue()
 		if err := UpdateRevNat(revNATKey, revNATValue); err != nil {
-			return fmt.Errorf("unable to update reverse NAT %+v with value %+v, %s", revNATKey, revNATValue, err)
+			return nSvcs, fmt.Errorf("unable to update reverse NAT %+v with value %+v, %s", revNATKey, revNATValue, err)
 		}
 		defer func() {
 			if err != nil {
@@ -357,15 +411,15 @@ func AddSVC2BPFMap(fe ServiceKey, besValues []ServiceValue, addRevNAT bool, revN
 
 	err = UpdateService(fe, zeroValue)
 	if err != nil {
-		return fmt.Errorf("unable to update service %+v with the value %+v: %s", fe, zeroValue, err)
+		return nSvcs, fmt.Errorf("unable to update service %+v with the value %+v: %s", fe, zeroValue, err)
 	}
 
 	err = UpdateWrrSeq(fe, weights)
 	if err != nil {
-		return fmt.Errorf("unable to update service weights for %s with value %+v: %s", fe.String(), weights, err)
+		return nSvcs, fmt.Errorf("unable to update service weights for %s with value %+v: %s", fe.String(), weights, err)
 	}
 
-	return nil
+	return nSvcs, nil
 }
 
 // L3n4Addr2ServiceKey converts the given l3n4Addr to a ServiceKey with the slave ID

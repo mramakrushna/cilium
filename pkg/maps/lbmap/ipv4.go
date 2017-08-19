@@ -63,7 +63,7 @@ func (k *Service4Key) SetBackend(backend int)    { k.Slave = uint16(backend) }
 func (k *Service4Key) GetBackend() int           { return int(k.Slave) }
 
 func (k *Service4Key) String() string {
-	return fmt.Sprintf("%s:%d", k.Address, k.Port)
+	return fmt.Sprintf("%s:%d slave %d", k.Address, k.Port, k.Slave)
 }
 
 // ToNetwork converts Service4Key port to network byte order.

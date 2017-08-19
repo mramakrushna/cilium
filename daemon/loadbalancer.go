@@ -34,13 +34,14 @@ func (d *Daemon) addSVC2BPFMap(feCilium types.L3n4AddrID, feBPF lbmap.ServiceKey
 	besBPF []lbmap.ServiceValue, addRevNAT bool) error {
 	log.Debugf("addSVC2BPFMap: adding service %s to LBMap", feBPF)
 
-	err := lbmap.AddSVC2BPFMap(feBPF, besBPF, addRevNAT, int(feCilium.ID))
+	_, err := lbmap.AddSVC2BPFMap(feBPF, besBPF, addRevNAT, int(feCilium.ID))
 	if err != nil {
 		if addRevNAT {
 			delete(d.loadBalancer.RevNATMap, feCilium.ID)
 		}
 		return err
 	}
+
 	if addRevNAT {
 		d.loadBalancer.RevNATMap[feCilium.ID] = *feCilium.L3n4Addr.DeepCopy()
 	}
@@ -53,6 +54,7 @@ func (d *Daemon) addSVC2BPFMap(feCilium types.L3n4AddrID, feBPF lbmap.ServiceKey
 //
 // Returns true if service was created
 func (d *Daemon) SVCAdd(feL3n4Addr types.L3n4AddrID, be []types.LBBackEnd, addRevNAT bool) (bool, error) {
+	log.Debugf("SVCAdd: adding service with ID %s", feL3n4Addr.L3n4Addr)
 	if feL3n4Addr.ID == 0 {
 		return false, fmt.Errorf("invalid service ID 0")
 	}
@@ -90,7 +92,11 @@ func (d *Daemon) SVCAdd(feL3n4Addr types.L3n4AddrID, be []types.LBBackEnd, addRe
 // therefore there won't be any traffic going to the given backends.
 // All of the backends added will be DeepCopied to the internal load balancer map.
 func (d *Daemon) svcAdd(feL3n4Addr types.L3n4AddrID, bes []types.LBBackEnd, addRevNAT bool) (bool, error) {
-	// We will move the slice to the loadbalancer map which have a mutex. If we don't
+	log.Debugf("daemon.svcAdd: adding svc with ID %s", feL3n4Addr.L3n4Addr)
+	for _, v := range bes {
+		log.Debugf("daemon.svcAdd: ID %s has backend %s", feL3n4Addr, v)
+	}
+	// Move the slice to the loadbalancer map which has a mutex. If we don't
 	// copy the slice we might risk changing memory that should be locked.
 	beCpy := []types.LBBackEnd{}
 	for _, v := range bes {
@@ -182,8 +188,16 @@ func (h *deleteServiceID) Handle(params DeleteServiceIDParams) middleware.Respon
 	d.loadBalancer.BPFMapMU.Lock()
 	defer d.loadBalancer.BPFMapMU.Unlock()
 
-	svc, ok := d.loadBalancer.SVCMapID[types.ServiceID(params.ID)]
-	if !ok {
+	log.Debugf("DELETE service: trying to delete service with ID %d from d.loadBalancer.SVCMapID", types.ServiceID(params.ID))
+
+	log.Debugf("DELETE service: contents of SVCMapID")
+	for k, v := range d.loadBalancer.SVCMapID {
+		log.Debugf("DELETE service: d.loadBalancer.SVCMapID k --> v: %s --> %v", k, v)
+	}
+	log.Debugf("DELETE service: done dumping contents of SVCMapID")
+	svc, ok1 := d.loadBalancer.SVCMapID[types.ServiceID(params.ID)]
+
+	if !ok1 {
 		return NewDeleteServiceIDNotFound()
 	}
 
@@ -224,6 +238,40 @@ func (d *Daemon) svcDelete(svc *types.LBSVC) error {
 
 	svcKey.SetBackend(0)
 
+	// Get count of backends from master.
+	val, err := svcKey.Map().Lookup(svcKey.ToNetwork())
+	if err != nil {
+		return fmt.Errorf("key %s is not in lbmap", svcKey.ToNetwork())
+	}
+
+	var numBackends uint16
+
+	switch val.(type) {
+	case lbmap.ServiceValue:
+		vval := val.(lbmap.ServiceValue)
+		numBackends = uint16(vval.GetCount())
+	default:
+		return fmt.Errorf("ServiceKey %s did not map to ServiceValue", svcKey.ToNetwork())
+	}
+
+	log.Debugf("svcDelete: numBackends = %d for frontend %s", numBackends, svcKey)
+
+	// ServiceKeys are unique by their slave number, which corresponds to the number of backends. Delete each of these.
+	for i := numBackends ; i > 0 ; i-- {
+		var slaveKey lbmap.ServiceKey
+		if !svc.FE.IsIPv6() {
+			slaveKey = lbmap.NewService4Key(svc.FE.IP, svc.FE.Port, i)
+		} else {
+			slaveKey = lbmap.NewService6Key(svc.FE.IP, svc.FE.Port, i)
+		}
+		log.Debugf("svcDelete: deleting backend # %d for svcKey: %s", i, slaveKey)
+		if err := lbmap.DeleteService(slaveKey) ; err != nil {
+			return fmt.Errorf("svcDelete: lbMap.DeleteService failed for %s: %s", slaveKey.String(), err)
+
+		}
+	}
+
+	log.Debugf("done deleting slaves, now deleting master key")
 	if err := lbmap.DeleteService(svcKey); err != nil {
 		log.Debugf("svcDelete: lbMap.DeleteService failed for %s", svcKey.String())
 		return err
@@ -422,6 +470,7 @@ func (d *Daemon) SyncLBMap() error {
 			return
 		}
 
+		log.Debugf("SyncLBMap: adding fe %s to newSVCMap", fe)
 		newSVCMap.AddFEnBE(fe, be, svcKey.GetBackend())
 	}
 
@@ -504,6 +553,7 @@ func (d *Daemon) SyncLBMap() error {
 	// Let's check if the services read from the lbmap have the same ID set in the
 	// KVStore.
 	for k, svc := range newSVCMap {
+		log.Debugf("SyncLBMap: iterating over services read from LB Map and seeing if they have the same ID set in the KV store")
 		kvL3n4AddrID, err := PutL3n4Addr(svc.FE.L3n4Addr, 0)
 		if err != nil {
 			log.Errorf("Unable to retrieve service ID of: %s from KVStore: %s."+
@@ -532,8 +582,14 @@ func (d *Daemon) SyncLBMap() error {
 				}
 				continue
 			}
+			log.Debugf("SyncLBMap: adding %s to newSVCMap", k)
 			newSVCMap[k] = svc
+			log.Debugf("SyncLBMap: adding %s to newSVCMapID", svc.FE.ID)
 			newSVCMapID[svc.FE.ID] = &svc
+			log.Debugf("SyncLBMap: done adding %s to newSVCMapID", svc.FE.ID)
+		} else {
+			log.Debugf("svc.FE.ID == kvL3n4AddrID.ID: %d == %d", svc.FE.ID, kvL3n4AddrID.ID)
+			log.Debugf("svc.FE.ID == kvL3n4AddrID.ID, so we're not updating newSVCMapID")
 		}
 	}
 
@@ -569,6 +625,16 @@ func (d *Daemon) SyncLBMap() error {
 		}
 	}
 
+	log.Debugf("SyncLBMap: updating daemon's loadbalancer maps")
+	for k, v := range newSVCMap {
+		log.Debugf("SyncLBMap: daemon SVCMap will have %s --> %v", k, v)
+	}
+	for k, v := range  newSVCMapID {
+		log.Debugf("SyncLBMap: daemon SVCMapID will have %s --> %v", k, v)
+	}
+	for k, v := range newRevNATMap {
+		log.Debugf("SyncLBMap: daemon RevNATMap will have %v --> %v", k, v)
+	}
 	d.loadBalancer.SVCMap = newSVCMap
 	d.loadBalancer.SVCMapID = newSVCMapID
 	d.loadBalancer.RevNATMap = newRevNATMap

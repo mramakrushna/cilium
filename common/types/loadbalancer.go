@@ -100,8 +100,10 @@ type LoadBalancer struct {
 
 // AddService adds a service to list of loadbalancers and returns true if created.
 func (lb *LoadBalancer) AddService(svc LBSVC) bool {
+	log.Debugf("loadbalancer.AddService: adding service with frontend %s and backends %s to lb.SVCMapID, lbSVCMap", svc.FE, svc.BES)
 	oldSvc, ok := lb.SVCMapID[svc.FE.ID]
 	if ok {
+		log.Debugf("loadbalancer.AddService: service with FE %s is already in lb.SVCMapID; deleting old entry and updating it with new entry", svc.FE)
 		// If service already existed, remove old entry from map
 		delete(lb.SVCMap, oldSvc.Sha256)
 	}
@@ -388,6 +390,7 @@ func (a *L3n4Addr) IsIPv6() bool {
 type L3n4AddrID struct {
 	L3n4Addr
 	ID ServiceID
+	Slave uint16 // Number of slaves associated with this L3n4AddrID
 }
 
 func (a *L3n4AddrID) String() string {

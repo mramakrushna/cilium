@@ -90,7 +90,7 @@ func (k *Service6Key) ToHost() ServiceKey {
 }
 
 func (k *Service6Key) String() string {
-	return fmt.Sprintf("[%s]:%d", k.Address, k.Port)
+	return fmt.Sprintf("[%s]:%d slave %d", k.Address, k.Port, k.Slave)
 }
 
 func (k *Service6Key) RevNatValue() RevNatValue {
