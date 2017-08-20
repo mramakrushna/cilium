@@ -140,6 +140,7 @@ cilium config PolicyEnforcement=always
 wait_for_endpoints ${NUM_ENDPOINTS}
 check_endpoints_policy_enabled ${NUM_ENDPOINTS}
 
+exit 0
 # Test 5: always --> never mode, no K8s, no policy imported.
 # We expect that all endpoints should have policy enforcement disabled after this configuration is applied.
 echo "---- Test 5: always --> never mode: check that each endpoint has policy enforcement disabled with no policy imported ----"

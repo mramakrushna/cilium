@@ -98,6 +98,7 @@ func configDaemon(cmd *cobra.Command, opts []string) {
 			cfg.PolicyEnforcement = optionSplit[1]
 			continue
 		}
+
 		name, value, err := options.Parse(opts[k])
 		if err != nil {
 			fmt.Printf("%s\n", err)

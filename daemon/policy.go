@@ -89,7 +89,7 @@ func (d *Daemon) EnableEndpointPolicyEnforcement(e *endpoint.Endpoint) bool {
 	// enabled for the endpoint.
 
 	config.EnablePolicyMU.Lock()
-	daemonPolicyEnable, _ := d.EnablePolicyEnforcement()
+	daemonPolicyEnable := d.EnablePolicyEnforcement()
 	defer config.EnablePolicyMU.Unlock()
 	if daemonPolicyEnable {
 		return true
@@ -113,28 +113,18 @@ func (d *Daemon) EnableEndpointPolicyEnforcement(e *endpoint.Endpoint) bool {
 // EnablePolicyEnforcement returns whether policy enforcement needs to be
 // enabled at the daemon-level.
 //
-// Must be called d.GetPolicyRepository().Mutex held and d.conf.EnablePolicyMU held.
-func (d *Daemon) EnablePolicyEnforcement() (bool, bool) {
-	config := make(models.ConfigurationMap)
+// Must be called with d.GetPolicyRepository().Mutex and d.conf.EnablePolicyMU held.
+func (d *Daemon) EnablePolicyEnforcement() bool {
 	if d.conf.EnablePolicy == endpoint.AlwaysEnforce {
-		config[endpoint.OptionPolicy] = "enabled"
-		changes := d.conf.Opts.Apply(config, changedOption, d)
-		return true, changes > 0
+		return true
 	} else if d.conf.EnablePolicy == endpoint.DefaultEnforcement && !d.conf.IsK8sEnabled() {
 		if d.GetPolicyRepository().NumRules() > 0 {
-			config[endpoint.OptionPolicy] = "enabled"
-			changes := d.conf.Opts.Apply(config, changedOption, d)
-			return true, changes > 0
+			return true
 		} else {
-			//d.conf.Opts.Set(endpoint.OptionPolicy, false)
-			config[endpoint.OptionPolicy] = "disabled"
-			changes := d.conf.Opts.Apply(config, changedOption, d)
-			return false, changes > 0
+			return false
 		}
 	}
-	config[endpoint.OptionPolicy] = "disabled"
-	changes := d.conf.Opts.Apply(config, changedOption, d)
-	return false, changes > 0
+	return false
 }
 
 type getPolicyResolve struct {
@@ -476,6 +466,7 @@ func (h *getPolicy) Handle(params GetPolicyParams) middleware.Responder {
 
 func (d *Daemon) PolicyInit() error {
 	for k, v := range policy.ReservedIdentities {
+		log.Debugf("creating policy for %s", k)
 		key := policy.NumericIdentity(v).String()
 		lbl := labels.NewLabel(
 			key, "", labels.LabelSourceReserved,

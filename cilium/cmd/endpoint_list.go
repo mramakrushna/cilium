@@ -23,8 +23,8 @@ import (
 	"github.com/cilium/cilium/api/v1/models"
 	"github.com/cilium/cilium/pkg/endpoint"
 
-	"github.com/spf13/cobra"
 	"github.com/go-openapi/swag"
+	"github.com/spf13/cobra"
 )
 
 var noHeaders bool

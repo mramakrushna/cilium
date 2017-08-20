@@ -303,8 +303,13 @@ func createDockerClient(endpoint string) (*dClient.Client, error) {
 	return dClient.NewClient(endpoint, "v1.21", nil, defaultHeaders)
 }
 
+// Must be called with d.conf.EnablePolicyMU locked.
 func (d *Daemon) writeNetdevHeader(dir string) error {
+
 	headerPath := filepath.Join(dir, common.NetdevHeaderFileName)
+
+	log.Debugf("writing configuration to %s", headerPath)
+
 	f, err := os.Create(headerPath)
 	if err != nil {
 		return fmt.Errorf("failed to open file %s for writing: %s", headerPath, err)
@@ -314,8 +319,25 @@ func (d *Daemon) writeNetdevHeader(dir string) error {
 
 	fw := bufio.NewWriter(f)
 	fw.WriteString(d.conf.Opts.GetFmtList())
+	fw.WriteString(d.fmtPolicyEnforcement())
 
 	return fw.Flush()
+}
+
+// returns #define for PolicyEnforcement based on the configuration of the daemon.
+// Must be called with d.conf.EnablePolicyMU locked.
+func (d *Daemon) fmtPolicyEnforcement() string {
+	d.GetPolicyRepository().Mutex.RLock()
+
+	enforcement := d.EnablePolicyEnforcement()
+
+	d.GetPolicyRepository().Mutex.RUnlock()
+
+	if enforcement {
+		return fmt.Sprintf("#define %s\n", endpoint.OptionSpecPolicy.Define)
+	} else {
+		return fmt.Sprintf("#undef %s\n", endpoint.OptionSpecPolicy.Define)
+	}
 }
 
 func (d *Daemon) setHostAddresses() error {
@@ -483,6 +505,7 @@ func (d *Daemon) installMasqRule() error {
 		"-j", "CILIUM_POST"}, false)
 }
 
+// Must be called with d.conf.EnablePolicyMU locked.
 func (d *Daemon) compileBase() error {
 	var args []string
 	var mode string
@@ -658,9 +681,13 @@ func (d *Daemon) init() error {
 	f.Close()
 
 	if !d.DryModeEnabled() {
+		d.conf.EnablePolicyMU.RLock()
 		if err := d.compileBase(); err != nil {
+			d.conf.EnablePolicyMU.RUnlock()
 			return err
 		}
+
+		d.conf.EnablePolicyMU.RUnlock()
 
 		localIPs := []net.IP{
 			nodeaddress.GetInternalIPv4(),
@@ -1088,38 +1115,27 @@ func (h *patchConfig) Handle(params PatchConfigParams) middleware.Responder {
 		return apierror.Error(PatchConfigBadRequestCode, err)
 	}
 
-	// Only configure PolicyEnforcement through PolicyEnforcement flag, not Policy flag.
-	if _, ok := params.Configuration.Mutable[endpoint.OptionPolicy]; ok {
-		msg := fmt.Errorf("Please configuration policy enforcement for the daemon using \"PolicyEnforcement\" instead of \"Policy\"")
-		log.Warningf("%s", msg)
-		return apierror.Error(PatchConfigBadRequestCode, msg)
-	}
-
-	var policyEnforcementChanged bool
+	// Track changes to daemon's configuration
+	var changes int
 
 	enforcement := params.Configuration.PolicyEnforcement
 
 	// Only update if value provided for PolicyEnforcement.
 	if enforcement != "" {
+		log.Debugf("configuration request to change PolicyEnforcement for daemon")
 		switch enforcement {
 		case endpoint.NeverEnforce, endpoint.DefaultEnforcement, endpoint.AlwaysEnforce:
 
 			// Update policy enforcement configuration if needed.
-			config.EnablePolicyMU.RLock()
+			config.EnablePolicyMU.Lock()
+			defer config.EnablePolicyMU.Unlock()
 			oldEnforcementValue := config.EnablePolicy
-			config.EnablePolicyMU.RUnlock()
 
 			// If the policy enforcement configuration has indeed changed, we have
 			// to regenerate endpoints and update daemon's configuration.
 			if enforcement != oldEnforcementValue {
-				// Only allow configuration updates for PolicyEnforcement to occur again once configuration has been applied
-				config.EnablePolicyMU.Lock()
-				defer config.EnablePolicyMU.Unlock()
+				changes += 1
 				config.EnablePolicy = enforcement
-
-				d.GetPolicyRepository().Mutex.RLock()
-				_, policyEnforcementChanged = d.EnablePolicyEnforcement()
-				d.GetPolicyRepository().Mutex.RUnlock()
 				d.TriggerPolicyUpdates([]policy.NumericIdentity{})
 			}
 		default:
@@ -1127,16 +1143,16 @@ func (h *patchConfig) Handle(params PatchConfigParams) middleware.Responder {
 			log.Warningf("%s", msg)
 			return apierror.Error(PatchConfigFailureCode, msg)
 		}
+		log.Debugf("finished configuring PolicyEnforcement for daemon")
 	}
 
-	changes := d.conf.Opts.Apply(params.Configuration.Mutable, changedOption, d)
-	if policyEnforcementChanged {
-		changes = changes + 1
-	}
+	changes += d.conf.Opts.Apply(params.Configuration.Mutable, changedOption, d)
 
-	log.Debugf("Applied %d changes", changes)
+	log.Debugf("Applied %d changes to daemon's configuration", changes)
 
+	// Only recompile if configuration has changed.
 	if changes > 0 {
+		log.Debugf("daemon configuration has changed; recompiling base programs")
 		if err := d.compileBase(); err != nil {
 			msg := fmt.Errorf("Unable to recompile base programs: %s", err)
 			log.Warningf("%s", msg)
