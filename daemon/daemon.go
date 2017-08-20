@@ -244,10 +244,11 @@ func (d *Daemon) AlwaysAllowLocalhost() bool {
 	return d.conf.alwaysAllowLocalhost
 }
 
-func (d *Daemon) PolicyEnforcement() string {
+func (d *Daemon) PolicyEnforcement() (pe string) {
 	d.conf.EnablePolicyMU.RLock()
-	defer d.conf.EnablePolicyMU.RUnlock()
-	return d.conf.EnablePolicy
+	pe = d.conf.EnablePolicy
+	d.conf.EnablePolicyMU.RUnlock()
+	return
 }
 
 // DebugEnabled returns if debug mode is enabled.
