@@ -18,14 +18,14 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 
 	"github.com/cilium/cilium/api/v1/models"
 	"github.com/cilium/cilium/common"
 	"github.com/cilium/cilium/daemon/options"
-
 	"github.com/cilium/cilium/pkg/option"
+
 	"github.com/spf13/cobra"
-	"strings"
 )
 
 // configCmd represents the config command
