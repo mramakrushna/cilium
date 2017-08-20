@@ -848,6 +848,26 @@ func init() {
         }
       }
     },
+    "CIDRPolicy": {
+      "description": "CIDR endpoint policy",
+      "type": "object",
+      "properties": {
+        "egress": {
+          "description": "List of CIDR egress rules",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ingress": {
+          "description": "list of CIDR ingress rules",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
     "Configuration": {
       "description": "General purpose structure to hold configuration of the daemon and\nendpoints. Split into a mutable and immutable section.\n",
       "type": "object",
@@ -904,6 +924,9 @@ func init() {
         "addressing": {
           "$ref": "#/definitions/EndpointAddressing"
         },
+        "cidr-policy": {
+          "$ref": "#/definitions/CIDRPolicy"
+        },
         "container-id": {
           "description": "ID assigned by container runtime",
           "type": "string"
@@ -939,9 +962,6 @@ func init() {
         "interface-name": {
           "description": "Name of network device",
           "type": "string"
-        },
-        "l3": {
-          "$ref": "#/definitions/L3Policy"
         },
         "labels": {
           "description": "Labels describing the identity",
@@ -1206,26 +1226,6 @@ func init() {
         "verbose": {
           "description": "Enable verbose tracing.\n",
           "type": "boolean"
-        }
-      }
-    },
-    "L3Policy": {
-      "description": "L3 endpoint policy",
-      "type": "object",
-      "properties": {
-        "egress": {
-          "description": "List of L3 Egress rules",
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "ingress": {
-          "description": "list of L3 Ingress rules",
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
         }
       }
     },

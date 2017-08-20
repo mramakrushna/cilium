@@ -156,7 +156,7 @@ func (l3 *L3Policy) DeepCopy() *L3Policy {
 }
 
 // GetModel returns the API model representation of the L3Policy.
-func (l3 *L3Policy) GetModel() *models.L3Policy {
+func (l3 *L3Policy) GetModel() *models.CIDRPolicy {
 	if l3 == nil {
 		return nil
 	}
@@ -171,7 +171,7 @@ func (l3 *L3Policy) GetModel() *models.L3Policy {
 		egress = append(egress, v.String())
 	}
 
-	return &models.L3Policy{
+	return &models.CIDRPolicy{
 		Ingress: ingress,
 		Egress:  egress,
 	}

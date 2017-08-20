@@ -20,6 +20,9 @@ type Endpoint struct {
 	// addressing
 	Addressing *EndpointAddressing `json:"addressing,omitempty"`
 
+	// cidr policy
+	CidrPolicy *CIDRPolicy `json:"cidr-policy,omitempty"`
+
 	// ID assigned by container runtime
 	ContainerID string `json:"container-id,omitempty"`
 
@@ -46,9 +49,6 @@ type Endpoint struct {
 
 	// Name of network device
 	InterfaceName string `json:"interface-name,omitempty"`
-
-	// l3
-	L3 *L3Policy `json:"l3,omitempty"`
 
 	// Labels describing the identity
 	Labels *LabelConfiguration `json:"labels,omitempty"`
@@ -86,12 +86,12 @@ func (m *Endpoint) Validate(formats strfmt.Registry) error {
 		res = append(res, err)
 	}
 
-	if err := m.validateIdentity(formats); err != nil {
+	if err := m.validateCidrPolicy(formats); err != nil {
 		// prop
 		res = append(res, err)
 	}
 
-	if err := m.validateL3(formats); err != nil {
+	if err := m.validateIdentity(formats); err != nil {
 		// prop
 		res = append(res, err)
 	}
@@ -146,6 +146,25 @@ func (m *Endpoint) validateAddressing(formats strfmt.Registry) error {
 	return nil
 }
 
+func (m *Endpoint) validateCidrPolicy(formats strfmt.Registry) error {
+
+	if swag.IsZero(m.CidrPolicy) { // not required
+		return nil
+	}
+
+	if m.CidrPolicy != nil {
+
+		if err := m.CidrPolicy.Validate(formats); err != nil {
+			if ve, ok := err.(*errors.Validation); ok {
+				return ve.ValidateName("cidr-policy")
+			}
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (m *Endpoint) validateIdentity(formats strfmt.Registry) error {
 
 	if swag.IsZero(m.Identity) { // not required
@@ -157,25 +176,6 @@ func (m *Endpoint) validateIdentity(formats strfmt.Registry) error {
 		if err := m.Identity.Validate(formats); err != nil {
 			if ve, ok := err.(*errors.Validation); ok {
 				return ve.ValidateName("identity")
-			}
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (m *Endpoint) validateL3(formats strfmt.Registry) error {
-
-	if swag.IsZero(m.L3) { // not required
-		return nil
-	}
-
-	if m.L3 != nil {
-
-		if err := m.L3.Validate(formats); err != nil {
-			if ve, ok := err.(*errors.Validation); ok {
-				return ve.ValidateName("l3")
 			}
 			return err
 		}

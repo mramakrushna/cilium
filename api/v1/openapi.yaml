@@ -703,8 +703,8 @@ definitions:
       policy-revision:
         description: The policy revision this endpoint is running on
         type: integer
-      l3:
-        "$ref": "#/definitions/L3Policy"
+      cidr-policy:
+        "$ref": "#/definitions/CIDRPolicy"
   EndpointChangeRequest:
     description: |
       Structure which contains the mutable elements of an Endpoint.
@@ -808,17 +808,17 @@ definitions:
         type: array
         items:
           type: string
-  L3Policy:
-    description: L3 endpoint policy
+  CIDRPolicy:
+    description: CIDR endpoint policy
     type: object
     properties:
       ingress:
-        description: list of L3 Ingress rules
+        description: list of CIDR ingress rules
         type: array
         items:
           type: string
       egress:
-        description: List of L3 Egress rules
+        description: List of CIDR egress rules
         type: array
         items:
           type: string
