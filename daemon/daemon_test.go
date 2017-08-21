@@ -34,7 +34,7 @@ type DaemonSuite struct {
 	// Owners interface mock
 	OnTracingEnabled                  func() bool
 	OnDryModeEnabled                  func() bool
-	OnEnablePolicyEnforcement         func() (bool, bool)
+	OnEnablePolicyEnforcement         func() bool
 	OnEnableEndpointPolicyEnforcement func(e *e.Endpoint) bool
 	OnPolicyEnforcement               func() string
 	OnAlwaysAllowLocalhost            func() bool
@@ -81,7 +81,7 @@ func (ds *DaemonSuite) AnnotateEndpoint(e *e.Endpoint, annotationKey, annotation
 
 }
 
-func (ds *DaemonSuite) EnablePolicyEnforcement() (bool, bool) {
+func (ds *DaemonSuite) EnablePolicyEnforcement() bool {
 	if ds.OnEnablePolicyEnforcement != nil {
 		return ds.OnEnablePolicyEnforcement()
 	}
