@@ -19,8 +19,8 @@ import (
 	"os"
 
 	"github.com/cilium/cilium/pkg/endpoint"
-
 	"github.com/cilium/cilium/pkg/policy"
+	
 	"github.com/spf13/cobra"
 )
 

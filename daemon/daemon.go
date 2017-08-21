@@ -244,6 +244,7 @@ func (d *Daemon) AlwaysAllowLocalhost() bool {
 	return d.conf.alwaysAllowLocalhost
 }
 
+// PolicyEnforcement returns the type of policy enforcement for the daemon.
 func (d *Daemon) PolicyEnforcement() (pe string) {
 	d.conf.EnablePolicyMU.RLock()
 	pe = d.conf.EnablePolicy
@@ -336,9 +337,8 @@ func (d *Daemon) fmtPolicyEnforcement() string {
 
 	if enforcement {
 		return fmt.Sprintf("#define %s\n", endpoint.OptionSpecPolicy.Define)
-	} else {
-		return fmt.Sprintf("#undef %s\n", endpoint.OptionSpecPolicy.Define)
 	}
+	return fmt.Sprintf("#undef %s\n", endpoint.OptionSpecPolicy.Define)
 }
 
 func (d *Daemon) setHostAddresses() error {
@@ -1135,7 +1135,7 @@ func (h *patchConfig) Handle(params PatchConfigParams) middleware.Responder {
 			// If the policy enforcement configuration has indeed changed, we have
 			// to regenerate endpoints and update daemon's configuration.
 			if enforcement != oldEnforcementValue {
-				changes += 1
+				changes++
 				config.EnablePolicy = enforcement
 				d.TriggerPolicyUpdates([]policy.NumericIdentity{})
 			}
